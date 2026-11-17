@@ -1,0 +1,107 @@
+#!name=番茄小说去广告 · Carson v3.3（广告时段实测补漏）
+#!desc=专拦「看几页跳视频、等 30 秒才能翻页」这类激励视频与章末广告。核心是掐断穿山甲 get_ads 接口 + 广告配置下发。抖音商城、直播间商品、小火人、分享口令不受影响（那些走 ecombd/jinritemai，本模块完全不碰）。
+#!author=伞伞 for Carson
+#!system=ios
+#!date=2026-11-17
+#!homepage=https://github.com/zqzess/rule_for_quantumultX
+
+# ────────────────────────────────────────────────────────────
+# 版本谱系
+#   v2    原版 41 条 —— 拦得狠，但抖音商城商品挂掉
+#   v2.1  注释 3 条电商 —— 商品修好，仍有 12 条波及抖音（埋点/短链/关键字）
+#   v3.0  只留纯广告 11 条 —— 抖音零影响，但激励视频可能漏（少了广告配置）
+#   v3.1  本版 = v3.0 + 广告配置 3 条（monsetting / ad / dsp.toutiao.com）
+#   v3.2  日志实测补漏：searchpstatp.com（广告搜索）
+#   v3.3  广告时段实测：ads5-normal-*.zijieapi.com 走 DIRECT 漏网，补 DOMAIN,ads5-normal-lf/hl 精确匹配
+#
+# 为什么 v3.1 才够拦截激励视频
+#   激励视频的链路：get_ads(穿山甲) → 广告配置(monsetting/ad.toutiao) → 素材(pglstatp)
+#   只掐 get_ads 有时会被 App 缓存绕过；补上「广告配置」后，App 拿不到可播清单，
+#   只能直接放行翻页。这是最贴合「看 30 秒才能翻」这个具体场景的组合。
+#
+# 对抖音的影响边界（重要）
+#   ✅ 不受影响：商城商品、直播间购物车、商品详情、订单、搜索、分享口令
+#      —— 它们走 ecombdimg / ecombdapi / jinritemai / dig.bdurl，本模块一条都不拦
+#   ⚠️ 会变少：抖音里的第三方广告（穿山甲/头条广告平台是字节全系共用的，
+#      拦了番茄的，抖音的同类广告也一起被拦。这是无法只拦一边的技术限制）
+# ────────────────────────────────────────────────────────────
+
+[Rule]
+
+# ═══ 一、穿山甲 GroMore 广告 SDK —— 激励视频的入口 ═══
+DOMAIN-SUFFIX,pangolin-sdk-toutiao.com,REJECT
+DOMAIN-SUFFIX,pglstatp-toutiao.com,REJECT
+DOMAIN-SUFFIX,pangle.io,REJECT
+
+# ═══ 二、广告配置下发 —— 决定播什么广告（v3.1 新增）═══
+# 这三个是字节全系广告平台，拦了抖音广告也会少，但不影响商品与功能
+DOMAIN,monsetting.toutiao.com,REJECT
+DOMAIN,ad.toutiao.com,REJECT
+DOMAIN,dsp.toutiao.com,REJECT
+
+# ═══ 三、番茄专属广告位（其他 App 不使用）═══
+DOMAIN-SUFFIX,novelapp.fqnovelvod.com,REJECT
+DOMAIN,v6-novelapp.ixigua.com,REJECT
+DOMAIN,novelapp.ixigua.com,REJECT
+DOMAIN,log0-applog-lq.fqnovel.com,REJECT
+
+# ═══ 三点五、v3.2 新增：日志实测补漏（2026-11-17）═══
+# 依据：小火箭导出的 proxy 日志（proxy-2026-11-17-121931.db）逐条核查
+#   ① lf3-ad.searchpstatp.com —— 字节广告搜索接口（search+pstatp，区别于内容 pstatp）
+#   ② 补充说明：novelapp.fqnovelvod.com 原有规则已是 SUFFIX 级，v26/v5 前缀子域自动覆盖，无需新增
+#   刻意不拦：p6/p3-novel.byteimg.com（小说正常图片，非广告）
+DOMAIN-SUFFIX,searchpstatp.com,REJECT
+# v3.3（2026-11-17 19:03）：广告时段日志实测补漏（sr-logs-ad/proxy-2026-11-17-185734.db）
+#   番茄广告实际来自 ads5-normal-lf.zijieapi.com（字节广告接口，-lf 变体未被规则集覆盖，走了 DIRECT）
+#   精确列出 ads5-normal 的 -lf/-hl 变体（category-ads-all 只覆盖了 -hl 和裸域，-lf 漏了）
+DOMAIN,ads5-normal-lf.zijieapi.com,REJECT
+DOMAIN,ads5-normal-hl.zijieapi.com,REJECT
+# ═══ 四、广告素材签名包（ad-sign / ad-nhs-pos 精确子域）═══
+DOMAIN,p6-ad-sign.byteimg.com,REJECT
+DOMAIN,p9-ad-sign.byteimg.com,REJECT
+DOMAIN,lf-ad-nhs-pos.byteimg.com,REJECT
+DOMAIN,lf-sourcecdn-tos.bytegecko.com,REJECT
+
+# ═══════════════════════════════════════════════════════════
+# 以下【刻意不拦】—— 拦了会伤抖音的正常功能
+# ═══════════════════════════════════════════════════════════
+#
+# 【电商】抖音商城商品图、商品详情接口、直播间小黄车、订单
+#   ecombdimg.com  ecombdapi.com  obj.ecombdstatic.com  jinritemai.com
+#
+# 【分享】短链解析，抖音分享口令与外链跳转依赖
+#   dig.bdurl.net
+#
+# 【埋点与风控】抖音、头条、西瓜全在用，拦了可能导致登录/风控异常
+#   i.snssdk.com  is.snssdk.com  is-hl.snssdk.com  i-lq.snssdk.com
+#   mon.snssdk.com  mcs.snssdk.com  security-lq.snssdk.com  toblog.ctobsnssdk.com
+#
+# 【活动与西瓜】活动页、西瓜视频主页
+#   activity-ag.awemeughun.com  default.ixigua.com
+#
+# 【回传】用途不明，保守起见不动
+#   bytegoofy.com  byteorge.com
+#
+# 【关键字级】范围过宽，会匹配到其他 App 的同类域名，彻底删除
+#   DOMAIN-KEYWORD,applog   DOMAIN-KEYWORD,zijieapi
+#
+# 【番茄视频整域】拦了会导致番茄短剧/听书视频放不出，只用 novelapp 子域
+#   DOMAIN-SUFFIX,fqnovelvod.com
+
+[URL Rewrite]
+# 只写 MITM 覆盖得到的域名，否则不会命中
+^https?://.+\.pangolin-sdk-toutiao\.com/api/ad/union/sdk/(get_ads|stats|settings)/? - reject
+^https?://api-access\.pangolin-sdk-toutiao\.com/api/ad/.+ - reject
+^https?://.+\.pglstatp-toutiao\.com/.+/toutiao\.mp4 - reject
+^https?://.+\.pglstatp-toutiao\.com/obj/ad-app-package/.+ - reject
+^https?://.+\.pglstatp-toutiao\.com/obj/web\.business\.image/.+ - reject
+^https?://.+\.pglstatp-toutiao\.com/obj/ad-pattern/renderer - reject
+^https?://sf3-be-pack\.pglstatp-toutiao\.com/img/ad\.union\.api - reject
+^https?://gurd\.snssdk\.com/src/server/v3/package - reject
+^https?://dsp\.toutiao\.com/api/xunfei/ads/ - reject
+
+[MITM]
+# %APPEND% 追加到当前配置的 MITM 列表，不覆盖。
+# 只含广告域名与一个精确子域（gurd.snssdk.com），
+# 不含 *.snssdk.com / *.byteimg.com / *.pstatp.com / *.toutiao.com
+hostname = %APPEND% *.pangolin-sdk-toutiao.com, *.pangle.io, *.pglstatp-toutiao.com, gurd.snssdk.com, dsp.toutiao.com
